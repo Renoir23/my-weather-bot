@@ -44,15 +44,32 @@ class WeatherDropdown(discord.ui.Select):
                     for i in range(len(times)):
                         if probs[i] >= 30:
                             time_str = times[i].split("T")[1]
-                            rain_hours.append(f"- ⏰ {time_str} နာရီမှာ မိုးရွာနိုင်ခြေ {probs[i]}%")
+                            rain_hours.append(f"⏰ **{time_str} နာရီ** မှာ မိုးရွာနိုင်ခြေ {probs[i]}%")
                     
                     if not rain_hours:
                         rain_msg = "✨ ဒီနေ့ မိုးရွာရန် အကြောင်းမရှိပါ။ ရာသီဥတု သာယာပါလိမ့်မယ်။"
                     else:
                         rain_msg = "\n".join(rain_hours)
-                        
-                    msg = f"📍 **{selected_city}မြို့ မိုးလေဝသ အခြေအနေ**\n\n🌡️ လက်ရှိအပူချိန်: {current_temp} °C\n\n🌧️ **ဒီနေ့ မိုးရွာမယ့် အချိန်ဇယား:**\n{rain_msg}"
-                    await interaction.followup.send(msg)
+                    
+                    # --------------------------------------------------
+                    # 🌟 ဤနေရာတွင် ရိုးရိုးစာသားအစား Virtual Embed Card ဆောက်ထားပါသည်
+                    # --------------------------------------------------
+                    embed = discord.Embed(
+                        title=f"📍 {selected_city}မြို့ မိုးလေဝသ အခြေအနေ",
+                        description="ယနေ့အတွက် ခန့်မှန်းချက် အချက်အလက်များ",
+                        color=discord.Color.blue() # ကတ်ပြား၏ ဘေးဘောင်အရောင် (အပြာရောင်)
+                    )
+                    
+                    # ကတ်ပြားထဲက အကွက်လေးများ (Fields)
+                    embed.add_field(name="🌡️ လက်ရှိအပူချိန်", value=f"**{current_temp} °C**", inline=False)
+                    embed.add_field(name="🌧️ မိုးရွာမည့် အချိန်ဇယား", value=rain_msg, inline=False)
+                    
+                    # ကတ်ပြားအောက်ခြေ Footer နှင့် အလှပြပုံရိပ်
+                    embed.set_footer(text="Open-Meteo API မှ ဒေတာများကို ရယူထားပါသည်။")
+                    embed.set_thumbnail(url="https://i.imgur.com/w996Y7G.png") # မိုးလေဝသ အလှပြ Icon (ပြောင်းလဲနိုင်သည်)
+                    
+                    # စာသားအစား ဆောက်ထားတဲ့ Embed Card ကို ပို့ခိုင်းလိုက်တာပါ
+                    await interaction.followup.send(embed=embed)
                 else:
                     await interaction.followup.send("❌ မိုးလေဝသ ဒေတာ ယူရတာ အဆင်မပြေဖြစ်သွားပါတယ်။")
 
@@ -67,7 +84,7 @@ async def on_ready():
 
 @bot.command()
 async def weather(commands_ctx):
-    await commands_ctx.send("ბယ်မြို့ရဲ့ မိုးလေဝသ အခြေအနေကို သိချင်ပါသလဲခင်ဗျာ။ တည်နေရာကို Confirm ပေးပါ -", view=WeatherView())
+    await commands_ctx.send("ဘယ်မြို့ရဲ့ မိုးလေဝသ အခြေအနေကို သိချင်ပါသလဲခင်ဗျာ။ တည်နေရာကို Confirm ပေးပါ -", view=WeatherView())
 
 # Render ရဲ့ Port Scan ကို ကျော်ဖြတ်ဖို့ ဟန်ဆောင် ဆာဗာဆောက်ခြင်း
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -83,7 +100,6 @@ def run_health_check():
     server.serve_forever()
 
 if __name__ == "__main__":
-    # Web server ကို Thread တစ်ခုအနေနဲ့ သီးသန့် နောက်ကွယ်မှာ ပတ်ထားခိုင်းခြင်း
     threading.Thread(target=run_health_check, daemon=True).start()
     
     TOKEN = os.getenv("DISCORD_TOKEN")
