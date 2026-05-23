@@ -2,12 +2,14 @@ import os
 import discord
 from discord.ext import commands
 import aiohttp
+import asyncio
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
 
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ကိုယ်ထည့်ချင်တဲ့ မြို့တွေနဲ့ လတ္တီတွဒ်၊ လောင်ဂျီတွဒ်ကို ဒီမှာ ကြိုသတ်မှတ်ထားလို့ရပါတယ်
 CITIES = {
     "ရန်ကုန်": {"lat": 16.84, "lon": 96.16},
     "မန္တလေး": {"lat": 21.95, "lon": 96.08},
@@ -16,7 +18,6 @@ CITIES = {
     "လားရှိုး": {"lat": 22.93, "lon": 97.75}
 }
 
-# Dropdown Menu ပုံစံ ဖန်တီးခြင်း
 class WeatherDropdown(discord.ui.Select):
     def __init__(self):
         options = [
@@ -28,21 +29,17 @@ class WeatherDropdown(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         selected_city = self.values[0]
         coords = CITIES[selected_city]
+        await interaction.response.defer()
         
-        await interaction.response.defer() # Bot ခဏ စဉ်းစားနေတယ်လို့ ပြခိုင်းခြင်း
-        
-        # Open-Meteo API ထံမှ မိုးရွာနိုင်ခြေ ဒေတာ လှမ်းတောင်းခြင်း
         async with aiohttp.ClientSession() as session:
             url = f"https://api.open-meteo.com/v1/forecast?latitude={coords['lat']}&longitude={coords['lon']}&hourly=temperature_2m,precipitation_probability&current=temperature_2m&timezone=Asia/Yangon&forecast_days=1"
             async with session.get(url) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    
                     current_temp = data['current']['temperature_2m']
                     times = data['hourly']['time']
                     probs = data['hourly']['precipitation_probability']
                     
-                    # မိုးရွာနိုင်ခြေ ၃၀% ကျော်တဲ့ နာရီတွေကို စစ်ထုတ်ခြင်း
                     rain_hours = []
                     for i in range(len(times)):
                         if probs[i] >= 30:
@@ -68,14 +65,29 @@ class WeatherView(discord.ui.View):
 async def on_ready():
     print(f"{bot.user.name} အလုပ်လုပ်ဖို့ အဆင်သင့်ဖြစ်ပါပြီ!")
 
-# Discord မှာ !weather လို့ ရိုက်ရင် Menu ကျလာစေမယ့် Command
 @bot.command()
 async def weather(commands_ctx):
-    await commands_ctx.send("ဘယ်မြို့ရဲ့ မိုးလေဝသ အခြေအနေကို သိချင်ပါသလဲခင်ဗျာ။ တည်နေရာကို Confirm ပေးပါ -", view=WeatherView())
+    await commands_ctx.send("ბယ်မြို့ရဲ့ မိုးလေဝသ အခြေအနေကို သိချင်ပါသလဲခင်ဗျာ။ တည်နေရာကို Confirm ပေးပါ -", view=WeatherView())
 
-# Server ပေါ်တင်ရင် Token ကို ဖွက်ထားဖို့အတွက် ဖြစ်ပါတယ်
-TOKEN = os.getenv("DISCORD_TOKEN")
-if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("Error: DISCORD_TOKEN မတွေ့ရှိပါ။ Environment Variable ကို စစ်ဆေးပါ။")
+# Render ရဲ့ Port Scan ကို ကျော်ဖြတ်ဖို့ ဟန်ဆောင် ဆာဗာဆောက်ခြင်း
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_health_check():
+    port = int(os.getenv("PORT", 8000))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
+
+if __name__ == "__main__":
+    # Web server ကို Thread တစ်ခုအနေနဲ့ သီးသန့် နောက်ကွယ်မှာ ပတ်ထားခိုင်းခြင်း
+    threading.Thread(target=run_health_check, daemon=True).start()
+    
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("Error: DISCORD_TOKEN မတွေ့ရှိပါ။")
