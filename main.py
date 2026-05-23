@@ -1,0 +1,80 @@
+import os
+import discord
+from discord.ext import commands
+import aiohttp
+
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ကိုယ်ထည့်ချင်တဲ့ မြို့တွေနဲ့ လတ္တီတွဒ်၊ လောင်ဂျီတွဒ်ကို ဒီမှာ ကြိုသတ်မှတ်ထားလို့ရပါတယ်
+CITIES = {
+    "ရန်ကုန်": {"lat": 16.84, "lon": 96.16},
+    "မန္တလေး": {"lat": 21.95, "lon": 96.08},
+    "နေပြည်တော်": {"lat": 19.74, "lon": 96.11},
+    "တောင်ကြီး": {"lat": 20.78, "lon": 97.03}
+}
+
+# Dropdown Menu ပုံစံ ဖန်တီးခြင်း
+class WeatherDropdown(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label=city, description=f"{city}မြို့၏ မိုးလေဝသကို ကြည့်မည်")
+            for city in CITIES.keys()
+        ]
+        super().__init__(placeholder="မိုးလေဝသကြည့်မည့် မြို့ကို ရွေးချယ်ပါ...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_city = self.values[0]
+        coords = CITIES[selected_city]
+        
+        await interaction.response.defer() # Bot ခဏ စဉ်းစားနေတယ်လို့ ပြခိုင်းခြင်း
+        
+        # Open-Meteo API ထံမှ မိုးရွာနိုင်ခြေ ဒေတာ လှမ်းတောင်းခြင်း
+        async with aiohttp.ClientSession() as session:
+            url = f"https://api.open-meteo.com/v1/forecast?latitude={coords['lat']}&longitude={coords['lon']}&hourly=temperature_2m,precipitation_probability&current=temperature_2m&timezone=Asia/Yangon&forecast_days=1"
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    
+                    current_temp = data['current']['temperature_2m']
+                    times = data['hourly']['time']
+                    probs = data['hourly']['precipitation_probability']
+                    
+                    # မိုးရွာနိုင်ခြေ ၃၀% ကျော်တဲ့ နာရီတွေကို စစ်ထုတ်ခြင်း
+                    rain_hours = []
+                    for i in range(len(times)):
+                        if probs[i] >= 30:
+                            time_str = times[i].split("T")[1]
+                            rain_hours.append(f"- ⏰ {time_str} နာရီမှာ မိုးရွာနိုင်ခြေ {probs[i]}%")
+                    
+                    if not rain_hours:
+                        rain_msg = "✨ ဒီနေ့ မိုးရွာရန် အကြောင်းမရှိပါ။ ရာသီဥတု သာယာပါလိမ့်မယ်။"
+                    else:
+                        rain_msg = "\n".join(rain_hours)
+                        
+                    msg = f"📍 **{selected_city}မြို့ မိုးလေဝသ အခြေအနေ**\n\n🌡️ လက်ရှိအပူချိန်: {current_temp} °C\n\n🌧️ **ဒီနေ့ မိုးရွာမယ့် အချိန်ဇယား:**\n{rain_msg}"
+                    await interaction.followup.send(msg)
+                else:
+                    await interaction.followup.send("❌ မိုးလေဝသ ဒေတာ ယူရတာ အဆင်မပြေဖြစ်သွားပါတယ်။")
+
+class WeatherView(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.add_item(WeatherDropdown())
+
+@bot.event
+async def on_ready():
+    print(f"{bot.user.name} အလုပ်လုပ်ဖို့ အဆင်သင့်ဖြစ်ပါပြီ!")
+
+# Discord မှာ !weather လို့ ရိုက်ရင် Menu ကျလာစေမယ့် Command
+@bot.command()
+async def weather(commands_ctx):
+    await commands_ctx.send("ဘယ်မြို့ရဲ့ မိုးလေဝသ အခြေအနေကို သိချင်ပါသလဲခင်ဗျာ။ တည်နေရာကို Confirm ပေးပါ -", view=WeatherView())
+
+# Server ပေါ်တင်ရင် Token ကို ဖွက်ထားဖို့အတွက် ဖြစ်ပါတယ်
+TOKEN = os.getenv("DISCORD_TOKEN")
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("Error: DISCORD_TOKEN မတွေ့ရှိပါ။ Environment Variable ကို စစ်ဆေးပါ။")
